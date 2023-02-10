@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
 var googleDomains = map[string]string{}
@@ -42,6 +45,66 @@ func buildGoogleUrls(searchTerm, languageCode, countryCode string, pages, count 
 	return toScrape, nil
 }
 
+func getScrapeClient(proxyString interface{}) *http.Client {
+	switch v := proxyString.(type) {
+	case string:
+		proxyUrl, _ := url.Parse(v)
+		return &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyUrl)}}
+	default:
+		return &http.Client{}
+	}
+
+}
+
+func scrapeClientRequest(searchURL string, proxyString interface{}) (*http.Response, error) {
+	baseClient := getScrapeClient(proxyString)
+	req, _ := http.NewRequest("GET", searchURL, nil)
+	req.Header.Set("User-Agent", randomUserAgent())
+
+	res, err := baseClient.Do(req)
+	if res.StatusCode != 200 {
+		err := fmt.Errorf("Scraper received a non - 200 status code suggesting a ban")
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func googleResultParsing(response *http.Response, rank int) ([]SearchResult, error) {
+	doc, err := goquery.NewDocumentFromResponse(response)
+	if err != nil {
+		return nil, err
+	}
+	results := []SearchResult{}
+	sel := doc.Find("div.g")
+	rank++
+	for i := range sel.Nodes {
+		item := sel.Eq(i)
+		linkTag := item.Find("a")
+		link, _ := linkTag.Attr("href")
+		titleTag := item.Find("h3.r")
+		descTag := item.Find("span.st")
+		desc := descTag.Text()
+		title := titleTag.Text()
+		link = strings.Trim(link, " ")
+
+		if link != "" && link != "#" && !strings.HasPrefix(link, "/") {
+			result := SearchResult{
+				rank,
+				link,
+				title,
+				desc,
+			}
+			results = append(results, result)
+			rank++
+		}
+
+	}
+	return results, err
+}
+
 func GoogleScrape(searchTerm, languageCode, countryCode string, proxyString interface{}, pages, count, backOff int) ([]SearchResult, error) {
 	results := []SearchResult{}
 	resultCounter := 0
@@ -66,22 +129,6 @@ func GoogleScrape(searchTerm, languageCode, countryCode string, proxyString inte
 		time.Sleep(time.Duration(backOff) * time.Second)
 	}
 	return results, nil
-}
-
-func scrapeClientRequest(searchURL string, proxyString interface{}) (*http.Response, error) {
-	baseClient := getScrapeClient(proxyString)
-	req, _ := http.NewRequest("GET", searchURL, nil)
-	req.Header.Set("User-Agent", randomUserAgent())
-
-	res, err := baseClient.Do(req)
-	if res.StatusCode != 200 {
-		err := fmt.Errorf("Scraper received a non - 200 status code suggesting a ban")
-		return nil, err
-	}
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
 }
 
 func main() {
