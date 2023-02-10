@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 )
 
 var googleDomains = map[string]string{}
@@ -18,6 +19,7 @@ type SearchResult struct {
 var userAgents = []string{}
 
 func randomUserAgent() string {
+	rand.Seed(time.Now().Unix())
 	randNum := rand.Int() % len(userAgents)
 	return userAgents[randNum]
 }
@@ -39,14 +41,34 @@ func buildGoogleUrls(searchTerm, languageCode, countryCode string, pages, count 
 	return toScrape, nil
 }
 
-func GoogleScrape(searchTerm, languageCode, countryCode string, pages, count int) ([]SearchResult, error) {
+func GoogleScrape(searchTerm, languageCode, countryCode string, proxyString interface{}, pages, count, backOff int) ([]SearchResult, error) {
 	results := []SearchResult{}
 	resultCounter := 0
 	googlePages, err := buildGoogleUrls(searchTerm, languageCode, countryCode, pages, count)
+	if err != nil {
+		return nil, err
+	}
+	for _, page := range googlePages {
+		res, err := scrapeClientRequest(page, proxyString)
+		if err != nil {
+			return nil, err
+		}
+		data, err := googleResultParsing(res, resultCounter)
+		if err != nil {
+			return nil, err
+		}
+		resultCounter += len(data)
+
+		for _, result := range data {
+			results = append(results, result)
+		}
+		time.Sleep(time.Duration(backOff) * time.Second)
+	}
+	return results, nil
 }
 
 func main() {
-	res, err := GoogleScrape("leksyking Felix Ogundipe", "en", "com", 1, 30)
+	res, err := GoogleScrape("leksyking Felix Ogundipe", "en", "com", nil, 1, 30, 10)
 	if err == nil {
 		for _, res := range res {
 			fmt.Println(res)
