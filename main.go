@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -65,6 +66,22 @@ func GoogleScrape(searchTerm, languageCode, countryCode string, proxyString inte
 		time.Sleep(time.Duration(backOff) * time.Second)
 	}
 	return results, nil
+}
+
+func scrapeClientRequest(searchURL string, proxyString interface{}) (*http.Response, error) {
+	baseClient := getScrapeClient(proxyString)
+	req, _ := http.NewRequest("GET", searchURL, nil)
+	req.Header.Set("User-Agent", randomUserAgent())
+
+	res, err := baseClient.Do(req)
+	if res.StatusCode != 200 {
+		err := fmt.Errorf("Scraper received a non - 200 status code suggesting a ban")
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 func main() {
